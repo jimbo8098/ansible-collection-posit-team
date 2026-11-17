@@ -1,0 +1,17 @@
+- name: Confirm the VM is Ubuntu 24.04
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_version == '24.04'
+    fail_msg: "This playbook targets Ubuntu 24.04. Found {{ ansible_distribution }} {{ ansible_distribution_version }}."
+
+- name: Warn if the VM is smaller than Posit recommends (4 CPU / 8 GB RAM)
+  ansible.builtin.debug:
+    msg: "WARNING: {{ ansible_processor_vcpus }} vCPU, {{ ansible_memtotal_mb }} MB RAM."
+  when: ansible_processor_vcpus < 4 or ansible_memtotal_mb < 7500
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: [curl, ca-certificates, gnupg, python3]
+    update_cache: true
+    cache_valid_time: 3600

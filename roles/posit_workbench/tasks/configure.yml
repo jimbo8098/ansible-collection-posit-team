@@ -1,0 +1,99 @@
+- name: Set the Workbench port
+  ansible.builtin.lineinfile:
+    path: /etc/rstudio/rserver.conf
+    regexp: '^#?\s*www-port='
+    line: "www-port={{ workbench_port }}"
+    create: true
+    mode: "0644"
+  notify: Restart Workbench
+
+- name: Configure the Launcher for local sessions (only if missing)
+  ansible.builtin.copy:
+    dest: /etc/rstudio/launcher.conf
+    force: false
+    mode: "0644"
+    content: |
+      [server]
+      address=127.0.0.1
+      port=5559
+      server-user=rstudio-server
+      admin-group=rstudio-server
+      authorization-enabled=1
+      thread-pool-size=4
+      enable-debug-logging=0
+      
+      [cluster]
+      name=Local
+      type=Local
+  notify: Restart Workbench
+
+- name: Tell Workbench which R versions exist
+  ansible.builtin.copy:
+    dest: /etc/rstudio/r-versions
+    mode: "0644"
+    content: |
+      {% for v in r_install %}
+      /opt/R/{{ v }}
+      {% endfor %}
+  notify: Restart Workbench
+
+- name: Enable JupyterLab and Jupyter Notebook sessions
+  ansible.builtin.copy:
+    dest: /etc/rstudio/jupyter.conf
+    mode: "0644"
+    content: |
+      jupyter-exe=/opt/python/{{ python_by_minor[python_jupyter_version] }}/bin/jupyter
+      labs-enabled=1
+      notebooks-enabled=1
+      default-session-cluster=Local
+  notify: Restart Workbench
+
+- name: Enable VS Code and Positron sessions
+  ansible.builtin.lineinfile:
+    path: "/etc/rstudio/{{ item }}"
+    regexp: '^#?\s*enabled='
+    line: enabled=1
+    create: true
+    mode: "0644"
+  loop: [vscode.conf, positron.conf]
+  notify: Restart Workbench
+
+- name: Create a test user for signing in
+  ansible.builtin.user:
+    name: "{{ workbench_test_user }}"
+    shell: /bin/bash
+    create_home: true
+  register: test_user
+  when: workbench_test_password | length > 0
+
+- name: Set the test user's password
+  ansible.builtin.command: chpasswd
+  args:
+    stdin: "{{ workbench_test_user }}:{{ workbench_test_password }}"
+  no_log: true
+  when: test_user is changed
+
+- name: Check the license status
+  ansible.builtin.command: rstudio-server license-manager status
+  register: license_status
+  changed_when: false
+  failed_when: false
+
+- name: Activate the license
+  ansible.builtin.command: rstudio-server license-manager activate {{ workbench_license_key | quote }}
+  no_log: true
+  when:
+    - workbench_license_key | length > 0
+    - "'Activated' not in license_status.stdout"
+  notify: Restart Workbench
+
+- name: Check whether the ufw firewall is on
+  ansible.builtin.command: ufw status
+  register: ufw_status
+  changed_when: false
+  failed_when: false
+
+- name: Open the Workbench port in ufw (only if ufw is on)
+  ansible.builtin.command: ufw allow {{ workbench_port }}/tcp
+  when: "'Status: active' in ufw_status.stdout"
+  changed_when: true
