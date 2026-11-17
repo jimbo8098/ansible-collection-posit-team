@@ -1,0 +1,40 @@
+- name: Load OS-specific variables
+  ansible.builtin.include_vars: "{{ lookup('ansible.builtin.first_found', params) }}"
+  vars:
+    params:
+      files:
+        - "{{ ansible_facts['os_family'] | lower }}.yml"
+      paths:
+        - vars
+
+- name: Retrieve latest Quarto release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/quarto-dev/quarto-cli/releases/latest
+  register: quarto_lookup
+  changed_when: false
+
+- name: Decide which Quarto version to install
+  ansible.builtin.set_fact:
+    quarto_install: "{{ quarto_lookup.json.tag_name | trim if quarto_version == 'latest' else quarto_version }}"
+    quarto_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+
+- name: Create the Quarto folder
+  ansible.builtin.file:
+    path: "/opt/quarto/{{ quarto_install }}"
+    state: directory
+    mode: "0755"
+
+- name: Download and unpack Quarto
+  ansible.builtin.unarchive:
+    src: "https://github.com/quarto-dev/quarto-cli/releases/download/{{ quarto_install }}/quarto-{{ quarto_install }}-linux-{{ quarto_arch }}.tar.gz"
+    dest: "/opt/quarto/{{ quarto_install }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    creates: "/opt/quarto/{{ quarto_install }}/bin/quarto"
+
+- name: Make this Quarto the default (/usr/local/bin/quarto)
+  ansible.builtin.file:
+    src: "/opt/quarto/{{ quarto_install }}/bin/quarto"
+    dest: /usr/local/bin/quarto
+    state: link
+    force: true

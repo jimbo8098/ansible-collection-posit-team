@@ -1,0 +1,6 @@
+---
+- name: Prepare
+  gather_facts: false
+  hosts: molecule
+  roles:
+    - role:  posit.posit_team.python
