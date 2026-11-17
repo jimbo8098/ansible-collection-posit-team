@@ -2,9 +2,17 @@
 # Purpose: assert that the instance really ended up in the expected state.
 # Molecule calls this playbook with `molecule verify`.
 - name: Verify
-  hosts: instance
+  hosts: all
   gather_facts: false # Quicker, if you do not need facts
   tasks:
+
     - name: Verify Quarto
-      ansible.builtin.command: /opt/quarto/{{ quarto_install }}/bin/quarto check install
+      ansible.builtin.command:
+        cmd: /usr/local/bin/quarto check install
+      register: quarto_check_install
       changed_when: false
+
+    - name:  Assert Quarto is installed
+      assert:
+        that:
+          - quarto_check_install.rc == 0
